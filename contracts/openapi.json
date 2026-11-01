@@ -14856,6 +14856,32 @@
             },
             "minItems": 3,
             "maxItems": 3
+          },
+          "location": {
+            "description": "Historical participant body at combat contact. Attackers use launch coordinates; defenders use the battle location. Body name and kind are captured at contact. Optional for legacy reports.",
+            "type": "object",
+            "properties": {
+              "coordinates": {
+                "$ref": "#/components/schemas/Coordinates"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "Planet",
+                  "Moon",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "coordinates"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
