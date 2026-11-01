@@ -31,7 +31,9 @@ export function ReportListRow({
   origin,
   now,
   disabled,
+  selectionDisabled = disabled,
   selected,
+  desktopSelection = false,
   onSelect,
   sort,
 }: {
@@ -42,9 +44,11 @@ export function ReportListRow({
   origin: string
   now: number
   disabled: boolean
+  selectionDisabled?: boolean
   sort?: ReportSort
+  desktopSelection?: boolean
   selected?: boolean
-  onSelect?: (checked: boolean) => void
+  onSelect?: (checked: boolean, shift: boolean) => void
 }) {
   const profiles = usePlayerDisplays()
   const preview = reportPreview(report.preview, model.binding?.player)
@@ -67,32 +71,64 @@ export function ReportListRow({
   ]
     .filter(Boolean)
     .join(' · ')
+  const checkbox = onSelect ? (
+    <label className={styles.selection}>
+      <input
+        type="checkbox"
+        aria-label={`Select ${title} report ${exactTime(report.observed_at)}`}
+        checked={selected}
+        disabled={
+          selectionDisabled ||
+          (!desktopSelection && !report.hidden && report.starred)
+        }
+        onChange={(e) =>
+          onSelect(
+            e.target.checked,
+            'shiftKey' in e.nativeEvent && !!e.nativeEvent.shiftKey,
+          )
+        }
+      />
+    </label>
+  ) : null
   return (
     <Panel
       as="article"
       className={styles.reportRow}
+      data-selection={desktopSelection || undefined}
+      data-selected={(desktopSelection && selected) || undefined}
       aria-label={`${title} report ${exactTime(report.observed_at)}`}
     >
+      {desktopSelection && (
+        <>
+          <span className={styles.unreadSlot}>
+            {!report.read && (
+              <span
+                className={styles.unread}
+                aria-label="Unread"
+                title="Unread"
+              />
+            )}
+          </span>
+          {checkbox}
+        </>
+      )}
       <div className={styles.reportMain}>
         <div className={styles.rowHeading}>
-          {onSelect && (
-            <label className={styles.selection}>
-              <input
-                type="checkbox"
-                aria-label={`Select ${title} report ${exactTime(report.observed_at)}`}
-                checked={selected}
-                disabled={disabled || (!report.hidden && report.starred)}
-                onChange={(e) => onSelect(e.target.checked)}
-              />
-            </label>
-          )}
+          {!desktopSelection && checkbox}
           <Link
             className={styles.reportLink}
             aria-label={title}
-            onClick={() => void model.recordPresence('AccountVisit', null)}
+            onClick={(event) => {
+              if (desktopSelection && event.shiftKey && onSelect) {
+                event.preventDefault()
+                if (!selectionDisabled) onSelect(!selected, true)
+                return
+              }
+              void model.recordPresence('AccountVisit', null)
+            }}
             {...routeTarget(universe, 'reports', origin, report.id)}
           >
-            {!report.read && (
+            {!desktopSelection && !report.read && (
               <span
                 className={styles.unread}
                 aria-label="Unread"
