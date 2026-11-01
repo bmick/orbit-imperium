@@ -12,6 +12,7 @@ import {
 } from '../ui/location-summary'
 import { RangeInput } from '../ui/form'
 import { DispatchShips } from './dispatch-ships'
+import { DispatchCargoCapacity } from './dispatch-cargo-capacity'
 import { DispatchDestinationPreview } from './dispatch-destination-preview'
 import { CoordinateLink } from './coordinate-link'
 import { InputWithAction, FillButton } from '../ui/input-with-action'
@@ -100,6 +101,8 @@ export function Dispatch({
     ships,
     setShips,
     cargo,
+    cargoCapacity,
+    cargoCapacityMessage,
     setCargo,
     addAllCargo,
     maxCargo,
@@ -349,6 +352,10 @@ export function Dispatch({
           <fieldset className={styles.cargoFields} aria-label="Cargo">
             <div className={styles.cargoHeader}>
               <span>Cargo</span>
+              <DispatchCargoCapacity
+                space={cargoCapacity}
+                message={cargoCapacityMessage}
+              />
             </div>
             <div className={styles.cargoInputs}>
               {resourceNames.map((resource, i) => (
