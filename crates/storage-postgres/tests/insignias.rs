@@ -16,6 +16,7 @@ fn catalog() -> InsigniaCatalog {
     InsigniaCatalog::with_manifest(InsigniaManifest {
         version: 1,
         insignias: vec![InsigniaSymbol {
+            group: InsigniaGroup::Legacy,
             id: "test-star".into(),
             name: "Test star".into(),
             supporter: true,
@@ -39,9 +40,9 @@ async fn call(
         .header("origin", "https://game.test")
         .header("cookie", format!("orbit_session={}", login.token))
         .header("content-type", "application/json")
-        .header("x-orbit-catalog", "1");
+        .header("x-orbit-catalog", "2");
     if endpoint == "player-profiles" {
-        request = request.header("x-orbit-insignia", "2");
+        request = request.header("x-orbit-insignia", "3");
     }
     if csrf {
         request = request.header("x-csrf-token", &login.session.csrf);
@@ -157,7 +158,10 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
     );
     let (status, initial) = call(&app, b, &login, true, "insignias", load).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(initial["catalog"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        initial["catalog"].as_array().unwrap().len(),
+        FREE_INSIGNIAS.len() + 1
+    );
     assert!(initial["appearance"].is_null());
     let (_, unequipped) = call(
         &app,
@@ -199,7 +203,9 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
             .to_bytes()
             .starts_with(b"<svg")
     );
-    let hosted_asset = initial["catalog"][3]["asset_url"].as_str().unwrap();
+    let hosted_asset = initial["catalog"][FREE_INSIGNIAS.len()]["asset_url"]
+        .as_str()
+        .unwrap();
     let anonymous = app
         .clone()
         .oneshot(Request::get(hosted_asset).body(Body::empty()).unwrap())
@@ -554,7 +560,7 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
         )
         .await
         .1;
-        assert_eq!(loaded["catalog"][3]["access"], expected);
+        assert_eq!(loaded["catalog"][FREE_INSIGNIAS.len()]["access"], expected);
         assert_eq!(
             loaded["library"]["designs"][0]["recipe"]["symbol"],
             "test-star"
@@ -589,7 +595,7 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
             json!({"action":{"type":"Load"}})
         )
         .await
-        .1["catalog"][3]["access"],
+        .1["catalog"][FREE_INSIGNIAS.len()]["access"],
         "available"
     );
     assert_eq!(
@@ -707,7 +713,10 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
         json!({"action":{"type":"Load"}}),
     )
     .await;
-    assert_eq!(loaded["catalog"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        loaded["catalog"].as_array().unwrap().len(),
+        FREE_INSIGNIAS.len()
+    );
     assert_eq!(
         loaded["library"]["designs"][0]["recipe"]["symbol"],
         "test-star"

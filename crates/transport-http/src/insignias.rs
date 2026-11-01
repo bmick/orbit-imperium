@@ -135,11 +135,39 @@ fn valid_original(bytes: &[u8]) -> bool {
 
 #[derive(Clone, Serialize)]
 pub(super) struct InsigniaAppearance {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layers: Option<Vec<AppearanceLayer>>,
     pub recipe: InsigniaRecipe,
     pub asset_url: String,
 }
+#[derive(Clone, Serialize)]
+pub(super) struct AppearanceLayer {
+    pub symbol: String,
+    pub color: String,
+    pub asset_url: String,
+}
 fn appearance(catalog: &InsigniaCatalog, recipe: InsigniaRecipe) -> InsigniaAppearance {
+    let layers = recipe.layers.as_ref().map(|layers| {
+        [
+            InsigniaGroup::Stripes,
+            InsigniaGroup::Center,
+            InsigniaGroup::Accents,
+        ]
+        .into_iter()
+        .flat_map(|group| {
+            layers
+                .iter()
+                .filter(move |l| catalog.get(&l.symbol).is_some_and(|s| s.group == group))
+        })
+        .map(|l| AppearanceLayer {
+            symbol: l.symbol.clone(),
+            color: l.color.clone(),
+            asset_url: catalog.get(&l.symbol).unwrap().asset_url(),
+        })
+        .collect()
+    });
     InsigniaAppearance {
+        layers,
         asset_url: catalog
             .get(&recipe.symbol)
             .expect("resolved installed symbol")
@@ -149,6 +177,7 @@ fn appearance(catalog: &InsigniaCatalog, recipe: InsigniaRecipe) -> InsigniaAppe
 }
 #[derive(Serialize)]
 struct Symbol {
+    group: InsigniaGroup,
     id: String,
     name: String,
     supporter: bool,
@@ -157,6 +186,7 @@ struct Symbol {
 }
 #[derive(Serialize)]
 struct InsigniaState {
+    composition_access: InsigniaAccess,
     binding: Binding,
     request_id: uuid::Uuid,
     library: InsigniaLibrary,
@@ -206,16 +236,16 @@ pub(super) async fn handle<S: GameStore + IdentityStore>(
         .map_err(ServiceError::from)?;
     // Old clients enumerate the initial symbols. Ask them to refresh their app
     // before editing a catalog/library they cannot faithfully represent.
-    if headers.get("x-orbit-catalog").is_none_or(|v| v != "1")
+    if headers.get("x-orbit-catalog").is_none_or(|v| v != "2")
         && (customization
             .catalog
             .symbols()
             .iter()
-            .any(|item| !legacy_insignia_id(&item.id))
+            .any(|item| item.group != InsigniaGroup::Legacy || !legacy_insignia_id(&item.id))
             || current_library
                 .designs
                 .iter()
-                .any(|d| !legacy_insignia_id(&d.recipe.symbol)))
+                .any(|d| d.recipe.version != 1 || !legacy_insignia_id(&d.recipe.symbol)))
     {
         return Err(ServiceError::Conflict.into());
     }
@@ -272,6 +302,7 @@ fn project_state(
         .symbols()
         .iter()
         .map(|item| Symbol {
+            group: item.group,
             id: item.id.clone(),
             name: item.name.clone(),
             supporter: item.supporter,
@@ -480,6 +511,7 @@ mod tests {
         let svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>";
         let hash = hex::encode(Sha256::digest(svg));
         let item = InsigniaSymbol {
+            group: InsigniaGroup::Legacy,
             id: "operator-circle".into(),
             name: "Operator circle".into(),
             supporter: true,
@@ -502,12 +534,12 @@ mod tests {
         let community = Customization::load(CosmeticPolicy::Unrestricted, store.clone(), None)
             .await
             .unwrap();
-        assert_eq!(community.catalog.symbols().len(), 3);
+        assert_eq!(community.catalog.symbols().len(), FREE_INSIGNIAS.len());
         assert!(community.catalog.get(&item.id).is_none());
         let installed = Customization::load(CosmeticPolicy::Supporter, store.clone(), Some(&key))
             .await
             .unwrap();
-        assert_eq!(installed.catalog.symbols().len(), 4);
+        assert_eq!(installed.catalog.symbols().len(), FREE_INSIGNIAS.len() + 1);
         assert_eq!(
             installed.catalog.get(&item.id).unwrap().asset_url(),
             item.asset_url()

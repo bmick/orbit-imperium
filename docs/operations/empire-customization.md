@@ -186,3 +186,29 @@ configuration. Publication does not restart or release Orbit. Publish verified
 content before activating its pin in a controlled application release. An old
 binary ignores the new setting and can be used for application rollback without
 deleting assets or changing database selections.
+
+## Layered insignias
+
+The editor supports recipe version 2 alongside unchanged version-1 designs.
+A layered design contains `layers: [{symbol, color}]` and the existing
+`foreground` / `background` colors. The legacy `symbol` remains `compass` for
+fallback. Layer geometry comes only from the installed catalog, never from player
+SVG input. Rendering order is stripes, center, accents, regardless of click order.
+The server permits one center, one accent and two distinct stripes. Free accounts
+use one shared element color and no stripes. Fresh supporter evidence (or an
+unrestricted self-hosted policy) enables stripes and up to three group colors.
+Permanent symbol grants unlock those symbols, not membership-only composition
+features. Expiry and removed catalogs preserve saved recipes and derive the
+normal free fallback.
+
+New catalog entries add `group: "center" | "stripes" | "accents"`; omitted group
+means `legacy`, preserving old installed catalogs. Community distribution includes
+16 independently authored free elements as well as the three legacy originals.
+Additional supporter elements and stripes are installed separately using the same
+immutable manifest/object flow above. Existing manifests remain valid. No database
+migration is needed; recipes are already stored as JSONB. Do not delete old assets.
+
+Deploy the API and new frontend together. Editors send `X-Orbit-Catalog: 2`;
+older editors receive 409 and should refresh when layered items/designs are
+present. Profile readers send `X-Orbit-Insignia: 3`. Older profile readers receive
+an unchanged version-1 fallback for layered designs, without extra layer fields.

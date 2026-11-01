@@ -24,7 +24,20 @@ export function EmpireInsignia({
         } as CSSProperties
       }
     >
-      <span />
+      {appearance.layers ? (
+        appearance.layers.map((layer) => (
+          <span
+            key={layer.symbol}
+            className={styles.layer}
+            style={{
+              background: layer.color,
+              mask: `url("${layer.asset_url}") center / 100% 100% no-repeat`,
+            }}
+          />
+        ))
+      ) : (
+        <span />
+      )}
     </span>
   )
 }

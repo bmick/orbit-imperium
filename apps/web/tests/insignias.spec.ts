@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { test, expect } from './fixtures/test'
 import { diagnosticScreenshot } from './fixtures/diagnostic-screenshot'
@@ -20,7 +20,7 @@ const fallback = {
 test.use({ hasTouch: true })
 
 type Design = components['schemas']['InsigniaDesign']
-async function fixture(page: Page) {
+async function fixture(page: Page, layered = false) {
   await shellFixture(page, {
     protocol: 4,
     missions: {
@@ -30,7 +30,7 @@ async function fixture(page: Page) {
       fleet_slots: '1',
     },
   })
-  const catalog = ['compass', 'wings', 'spire', 'test-star'].map((id, index) => {
+  const catalog: Array<{id:string;name:string;supporter:boolean;asset_url:string;bytes:Buffer;group?:'legacy'|'center'|'stripes'|'accents'}> = ['compass', 'wings', 'spire', 'test-star'].map((id, index) => {
     const bytes = readFileSync(
       id === 'test-star' ? 'crates/storage-postgres/tests/fixtures/cosmetics/test-star.svg' : `crates/application/assets/insignias/${id}.svg`,
     )
@@ -42,6 +42,18 @@ async function fixture(page: Page) {
       bytes,
     }
   })
+  if(layered){
+    for(const file of readdirSync('crates/application/assets/insignias').filter(f=>f.startsWith('forge-'))){
+      const id=file.slice(0,-4),bytes=readFileSync(`crates/application/assets/insignias/${file}`)
+      const centers=['wayfinder','starwing','ascendant','anvil','helix','quarter-moon','full-circle','triforce']
+      catalog.push({id,name:id.slice(6),group:centers.includes(id.slice(6))?'center':'accents',supporter:false,asset_url:`/api/media/insignias/${id}/${createHash('sha256').update(bytes).digest('hex')}.svg`,bytes})
+    }
+    // Independently authored fixtures; no official supporter originals in public tests.
+    for(const [id,group] of [['test-center','center'],['test-accent','accents'],['test-stripe-a','stripes'],['test-stripe-b','stripes'],['test-stripe-c','stripes']] as const){
+      const bytes=Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 108"><path fill="white" d="M40 10h20v88H40Z"/></svg>')
+      catalog.push({id,name:id,group,supporter:true,asset_url:`/api/media/insignias/${id}/${createHash('sha256').update(bytes).digest('hex')}.svg`,bytes})
+    }
+  }
   for (const item of catalog)
     await page.route(`**${item.asset_url}`, (r) =>
       r.fulfill({ contentType: 'image/svg+xml', body: item.bytes }),
@@ -56,14 +68,15 @@ async function fixture(page: Page) {
     fail: false,
   }
   const available = (symbol: string) =>
-    symbol !== 'test-star' ||
+    !symbol.startsWith('test-') ||
     (state.installed && (state.permanent || (state.supporter && !state.unknown)))
   const appearance = () => {
     const selected = state.designs.find((d) => d.id === state.equipped)?.recipe
     if (!selected) return null
-    const recipe = selected && available(selected.symbol) ? selected : fallback
+    const recipe = available(selected.symbol) && (selected.layers??[]).every(l=>available(l.symbol)) ? selected : fallback
     return {
       recipe,
+      ...(recipe.version===2?{layers:[...(recipe.layers??[])].sort((a,b)=>['stripes','center','accents'].indexOf(catalog.find(e=>e.id===a.symbol)!.group!)-['stripes','center','accents'].indexOf(catalog.find(e=>e.id===b.symbol)!.group!)).map(l=>({...l,asset_url:catalog.find(e=>e.id===l.symbol)!.asset_url}))}:{}),
       asset_url: catalog.find((s) => s.id === recipe.symbol)!.asset_url,
     }
   }
@@ -101,6 +114,7 @@ async function fixture(page: Page) {
           permanent_symbols: state.permanent ? ['test-star'] : [],
         },
         policy: 'supporter',
+        composition_access: state.unknown?'unavailable':state.supporter?'available':'supporter_required',
         catalog: catalog.filter((item) => state.installed || item.id !== 'test-star').map(({ bytes: _bytes, ...item }) => ({
           ...item,
           access: available(item.id)
@@ -514,4 +528,37 @@ for (const width of [1440, 390]) {
     await expect(panel.getByRole('status')).toHaveText('Design saved and equipped.')
     expect(state.designs[0].recipe.symbol).toBe('compass')
   })
+}
+
+for(const width of [1440,390]){
+ test(`layered composer saves colors and slots at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000})
+  const {state}=await fixture(page,true)
+  await page.goto('/u/andromeda/settings')
+  const panel=page.getByRole('region',{name:'Empire insignia'})
+  await panel.getByRole('button',{name:'New design'}).click()
+  await expect(panel.getByRole('button',{name:'test-center',exact:true})).toBeDisabled()
+  await panel.getByRole('button',{name:'triforce',exact:true}).click()
+  await panel.getByRole('button',{name:'mini-stripes',exact:true}).click()
+  await panel.getByLabel('Element color',{exact:true}).fill('#aabbcc')
+  await panel.getByRole('button',{name:'Save & equip'}).click()
+  await expect(panel.getByRole('status')).toHaveText('Design saved and equipped.')
+  expect(state.designs[0].recipe.version).toBe(2)
+  expect(state.designs[0].recipe.layers).toHaveLength(2)
+  expect(state.designs[0].recipe.layers?.every(l=>l.color==='#aabbcc')).toBe(true)
+  await panel.evaluate(el=>window.scrollBy(0,el.getBoundingClientRect().top-72))
+  await diagnosticScreenshot(page,{path:`test-results/composer-free-${width}x1000.png`,fullPage:true})
+  state.supporter=true;await page.reload()
+  for(const id of ['test-stripe-a','test-stripe-b','test-stripe-c'])await panel.getByRole('button',{name:id,exact:true}).click()
+  await panel.getByLabel('Accent color',{exact:true}).fill('#ffeeaa')
+  await panel.getByRole('button',{name:'Save & equip'}).click()
+  await expect(panel.getByRole('status')).toHaveText('Design saved and equipped.')
+  expect(state.designs[0].recipe.layers).toHaveLength(4)
+  expect(state.designs[0].recipe.layers?.some(l=>l.symbol==='test-stripe-a')).toBe(false)
+  await page.reload()
+  await expect(panel.getByRole('button',{name:'test-stripe-c',exact:true})).toHaveAttribute('aria-pressed','true')
+  await panel.evaluate(el=>window.scrollBy(0,el.getBoundingClientRect().top-72))
+  await diagnosticScreenshot(page,{path:`test-results/composer-supporter-${width}x1000.png`,fullPage:true})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ })
 }
