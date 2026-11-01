@@ -4,6 +4,7 @@ import { useGameScreen } from '../shell/screen-context'
 import { Section } from '../ui/section'
 import { Heading, Text } from '../ui/typography'
 import { Button } from '../ui/button'
+import { DiscordLink } from '../ui/discord-link'
 import styles from './settings.module.css'
 import { TaskHeader } from '../ui/task-header'
 import { BetaNotice } from '../ui/beta-notice'
@@ -17,6 +18,13 @@ export function SettingsScreen() {
     <Section className={styles.screen}>
       <TaskHeader title="Settings" />
       <BetaNotice />
+      <Section aria-label="Community">
+        <Heading level={2}>Community</Heading>
+        <Text>
+          Meet other players and keep up with Orbit Imperium on Discord.
+        </Text>
+        <DiscordLink />
+      </Section>
       <InsigniaEditor />
       <Section aria-label="Help and conduct reports">
         <Heading level={2}>Help & conduct reports</Heading>
