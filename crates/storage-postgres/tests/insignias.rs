@@ -40,9 +40,9 @@ async fn call(
         .header("origin", "https://game.test")
         .header("cookie", format!("orbit_session={}", login.token))
         .header("content-type", "application/json")
-        .header("x-orbit-catalog", "2");
+        .header("x-orbit-catalog", "3");
     if endpoint == "player-profiles" {
-        request = request.header("x-orbit-insignia", "3");
+        request = request.header("x-orbit-insignia", "4");
     }
     if csrf {
         request = request.header("x-csrf-token", &login.session.csrf);
@@ -784,6 +784,75 @@ async fn insignia_library_storage_access_and_public_identity_work_together() {
         serde_json::to_value(after).unwrap(),
         "cosmetics never change simulation state"
     );
+    for shape in [
+        None,
+        Some(InsigniaShape::Shield),
+        Some(InsigniaShape::Circle),
+        Some(InsigniaShape::RoundedSquare),
+        Some(InsigniaShape::Diamond),
+        Some(InsigniaShape::Hexagon),
+    ] {
+        let shaped = InsigniaDesign {
+            id: Uuid::new_v4(),
+            name: "Layered shape".into(),
+            revision: 0,
+            recipe: InsigniaRecipe {
+                version: 2,
+                shape,
+                layers: Some(vec![InsigniaLayer {
+                    symbol: "forge-wayfinder".into(),
+                    color: "#cbb68d".into(),
+                }]),
+                ..Default::default()
+            },
+        };
+        let (status, saved) = call(
+            &missing,
+            b,
+            &login,
+            true,
+            "insignias",
+            json!({"action":{"type":"Save","design":shaped,"equip":true}}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            saved["appearance"]["recipe"],
+            serde_json::to_value(&shaped.recipe).unwrap()
+        );
+        let reconnected = PgStore::connect(&url).await.unwrap();
+        assert_eq!(
+            reconnected.insignia_library(b).await.unwrap().designs[0].recipe,
+            shaped.recipe
+        );
+        let (status, profile) = call(
+            &missing,
+            b,
+            &login,
+            true,
+            "player-profiles",
+            json!({"source":{"type":"SelfAccount"}}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            profile["players"][0]["insignia"]["recipe"],
+            serde_json::to_value(&shaped.recipe).unwrap()
+        );
+        assert_eq!(
+            call(
+                &missing,
+                b,
+                &login,
+                true,
+                "insignias",
+                json!({"action":{"type":"Delete","design_id":shaped.id}})
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+    }
     sqlx::query("INSERT INTO insignia_designs(account,id,name,recipe,revision) SELECT $1,md5('insignia-limit-'||i)::uuid,'Limit '||i,$2,1 FROM generate_series(1,32) i")
         .bind(b.account.0).bind(sqlx::types::Json(InsigniaRecipe::default())).execute(&pool).await.unwrap();
     let extra = InsigniaDesign {

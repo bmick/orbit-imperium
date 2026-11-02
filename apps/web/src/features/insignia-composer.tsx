@@ -1,5 +1,7 @@
 import type { InsigniaRecipe, InsigniaState } from '../adapters/insignias'
 import {
+  backgroundShapes,
+  groupColor,
   compositionAppearance,
   compositionAvailable,
   elementGroups,
@@ -33,6 +35,29 @@ export function InsigniaComposer({
         Choose one center and one accent. Supporters can add up to two stripes
         and use three element colors.
       </p>
+      <fieldset disabled={busy}>
+        <legend>Background shape</legend>
+        <div className={`${styles.elementGrid} ${styles.shapeGrid}`}>
+          {backgroundShapes.map((shape) => (
+            <button
+              key={shape.id}
+              type="button"
+              aria-label={shape.name}
+              aria-pressed={(recipe.shape ?? 'shield') === shape.id}
+              onClick={() => onChange({ ...recipe, shape: shape.id })}
+            >
+              <EmpireInsignia
+                appearance={compositionAppearance(snapshot, {
+                  ...recipe,
+                  shape: shape.id,
+                })}
+                size="medium"
+              />
+              <span>{shape.name}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
       <div className={styles.actions}>
         <Button
           type="button"
@@ -123,11 +148,15 @@ export function InsigniaComposer({
               color
               <input
                 type="color"
-                disabled={busy}
-                value={
-                  recipe.layers?.find(
-                    (l) => groupOf(snapshot, l.symbol) === group,
-                  )?.color ?? recipe.foreground
+                aria-label={`${group === 'center' ? 'Center' : group === 'stripes' ? 'Stripe' : 'Accent'} color`}
+                disabled={
+                  busy || groupColor(snapshot, recipe, group) === undefined
+                }
+                value={groupColor(snapshot, recipe, group) ?? recipe.foreground}
+                aria-describedby={
+                  groupColor(snapshot, recipe, group) === undefined
+                    ? `insignia-${group}-color-help`
+                    : undefined
                 }
                 onChange={(e) =>
                   onChange(
@@ -135,6 +164,11 @@ export function InsigniaComposer({
                   )
                 }
               />
+              {groupColor(snapshot, recipe, group) === undefined && (
+                <small id={`insignia-${group}-color-help`}>
+                  Select an element to set its color.
+                </small>
+              )}
             </label>
           ))
         ) : (

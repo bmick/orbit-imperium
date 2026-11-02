@@ -236,7 +236,7 @@ pub(super) async fn handle<S: GameStore + IdentityStore>(
         .map_err(ServiceError::from)?;
     // Old clients enumerate the initial symbols. Ask them to refresh their app
     // before editing a catalog/library they cannot faithfully represent.
-    if headers.get("x-orbit-catalog").is_none_or(|v| v != "2")
+    if headers.get("x-orbit-catalog").is_none_or(|v| v != "3")
         && (customization
             .catalog
             .symbols()
@@ -328,10 +328,23 @@ fn project_state(
         library,
         catalog,
         policy,
+        composition_access: composition_access(policy, evidence, now),
         appearance: recipe.map(|r| appearance(installed, r)),
         expires_at,
     }
 }
+/// Do not send authored fields to clients whose strict schemas cannot represent them.
+pub(super) fn profile_recipe(recipe: InsigniaRecipe, version: Option<&str>) -> InsigniaRecipe {
+    if (recipe.shape.is_some() && version != Some("4"))
+        || (recipe.version == 2 && !matches!(version, Some("3" | "4")))
+        || (version == Some("1") && !legacy_insignia_id(&recipe.symbol))
+    {
+        InsigniaRecipe::default()
+    } else {
+        recipe
+    }
+}
+
 pub(super) async fn media<S: IdentityStore>(
     State(s): State<Arc<HttpState<S>>>,
     Path((symbol, version)): Path<(String, String)>,
@@ -475,6 +488,107 @@ mod tests {
         assert!(removed.appearance.is_none());
         assert_eq!(removed.library.designs.len(), 1);
     }
+    #[test]
+    fn state_projects_composition_access_from_fresh_evidence_and_policy() {
+        let id = uuid::Uuid::nil();
+        let binding = Binding {
+            account: AccountId(id),
+            player: PlayerId(id),
+            universe: UniverseId(id),
+            epoch: Epoch(id),
+        };
+        let fresh = SupporterEvidence {
+            known: true,
+            active: true,
+            expires_at: 101,
+        };
+        for (evidence, expected) in [
+            (fresh, InsigniaAccess::Available),
+            (
+                SupporterEvidence {
+                    active: false,
+                    ..fresh
+                },
+                InsigniaAccess::SupporterRequired,
+            ),
+            (
+                SupporterEvidence {
+                    known: false,
+                    ..fresh
+                },
+                InsigniaAccess::Unavailable,
+            ),
+            (
+                SupporterEvidence {
+                    expires_at: 100,
+                    ..fresh
+                },
+                InsigniaAccess::Unavailable,
+            ),
+            (SupporterEvidence::default(), InsigniaAccess::Unavailable),
+        ] {
+            for policy in [CosmeticPolicy::Supporter, CosmeticPolicy::Unrestricted] {
+                let state = project_state(
+                    binding,
+                    id,
+                    InsigniaLibrary {
+                        designs: vec![],
+                        equipped: None,
+                        permanent_symbols: vec!["compass".into()],
+                    },
+                    &InsigniaCatalog::default(),
+                    policy,
+                    evidence,
+                    100,
+                );
+                assert_eq!(
+                    state.composition_access,
+                    if policy == CosmeticPolicy::Unrestricted {
+                        InsigniaAccess::Available
+                    } else {
+                        expected
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn profile_negotiation_preserves_legacy_and_layered_clients_without_losing_shapes() {
+        let legacy = InsigniaRecipe {
+            symbol: "wings".into(),
+            ..Default::default()
+        };
+        let layered = InsigniaRecipe {
+            version: 2,
+            layers: Some(vec![]),
+            ..Default::default()
+        };
+        for version in ["1", "2", "3", "4"] {
+            assert_eq!(profile_recipe(legacy.clone(), Some(version)), legacy);
+            assert_eq!(
+                profile_recipe(layered.clone(), Some(version)),
+                if matches!(version, "3" | "4") {
+                    layered.clone()
+                } else {
+                    InsigniaRecipe::default()
+                }
+            );
+            let shaped = InsigniaRecipe {
+                shape: Some(InsigniaShape::Diamond),
+                ..layered.clone()
+            };
+            assert_eq!(
+                profile_recipe(shaped.clone(), Some(version)),
+                if version == "4" {
+                    shaped
+                } else {
+                    InsigniaRecipe::default()
+                }
+            );
+        }
+    }
+
     #[tokio::test]
     async fn publication_does_not_require_permission_to_inspect_missing_keys() {
         let c = Customization {

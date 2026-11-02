@@ -544,9 +544,11 @@ for(const width of [1440,390]){
   await panel.getByRole('button',{name:'triforce',exact:true}).click()
   await panel.getByRole('button',{name:'mini-stripes',exact:true}).click()
   await panel.getByLabel('Element color',{exact:true}).fill('#aabbcc')
+  await panel.getByRole('button',{name:'Hexagon',exact:true}).click()
   await panel.getByRole('button',{name:'Save & equip'}).click()
   await expect(panel.getByRole('status')).toHaveText('Design saved and equipped.')
   expect(state.designs[0].recipe.version).toBe(2)
+  expect(state.designs[0].recipe.shape).toBe('hexagon')
   expect(state.designs[0].recipe.layers).toHaveLength(2)
   expect(state.designs[0].recipe.layers?.every(l=>l.color==='#aabbcc')).toBe(true)
   await panel.evaluate(el=>window.scrollBy(0,el.getBoundingClientRect().top-72))
@@ -564,4 +566,64 @@ for(const width of [1440,390]){
   await diagnosticScreenshot(page,{path:`test-results/composer-supporter-${width}x1000.png`,fullPage:true})
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  })
+}
+
+for (const width of [1440, 390]) {
+  test(`empty color groups and background shape persistence at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    const { state } = await fixture(page, true)
+    state.supporter = true
+    await page.goto('/u/andromeda/settings')
+    const panel = page.getByRole('region', { name: 'Empire insignia' })
+    await panel.getByRole('button', { name: 'New design' }).click()
+    const accent = panel.getByLabel('Accent color', { exact: true })
+    await expect(accent).toBeDisabled()
+    await expect(accent).toHaveAccessibleDescription('Select an element to set its color.')
+    await panel.getByRole('button', { name: 'crown', exact: true }).click()
+    await accent.fill('#22cc88')
+    await panel.getByRole('button', { name: 'moons', exact: true }).click()
+    await expect(accent).toHaveValue('#22cc88')
+    await panel.getByRole('button', { name: 'moons', exact: true }).click()
+    await expect(accent).toBeDisabled()
+    await panel.getByRole('button', { name: 'crown', exact: true }).click()
+    await accent.fill('#22cc88')
+    const stripe = panel.getByLabel('Stripe color', { exact: true })
+    await expect(stripe).toBeDisabled()
+    await panel.getByRole('button', { name: 'test-stripe-a', exact: true }).click()
+    await stripe.fill('#8866cc')
+    await panel.getByRole('button', { name: 'test-stripe-b', exact: true }).click()
+    await panel.getByRole('button', { name: 'test-stripe-c', exact: true }).click()
+    await expect(stripe).toHaveValue('#8866cc')
+    const preview = panel.getByRole('img', { name: 'Insignia preview' })
+    for (const [shape, name] of [['shield', 'Shield'], ['circle', 'Circle'], ['rounded_square', 'Rounded square'], ['diamond', 'Diamond'], ['hexagon', 'Hexagon']]) {
+      const choice = panel.getByRole('button', { name, exact: true })
+      await choice.focus()
+      await choice.press('Space')
+      await expect(choice).toHaveAttribute('aria-pressed', 'true')
+      await expect(preview).toHaveAttribute('data-shape', shape)
+      if (process.env.ORBIT_TEST_SCREENSHOTS === '1') {
+        await panel.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 80))
+        await diagnosticScreenshot(page, { path: `test-results/composer-${shape}-${width}x1000.png` })
+      }
+    }
+    await panel.getByRole('button', { name: 'Save & equip' }).click()
+    await expect(panel.getByRole('status')).toHaveText('Design saved and equipped.')
+    expect(state.designs[0].recipe.shape).toBe('hexagon')
+    expect(state.designs[0].recipe.layers?.filter(l => l.symbol.startsWith('test-stripe')).map(l => l.color)).toEqual(['#8866cc', '#8866cc'])
+    await page.reload()
+    await expect(preview).toHaveAttribute('data-shape', 'hexagon')
+    await expect(accent).toHaveValue('#22cc88')
+    if (process.env.ORBIT_TEST_SCREENSHOTS === '1') {
+      await panel.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 80))
+      await diagnosticScreenshot(page, { path: `test-results/composer-saved-${width}x1000.png` })
+    }
+    await panel.getByRole('button', { name: 'Clear elements' }).click()
+    for (const label of ['Center color', 'Stripe color', 'Accent color']) await expect(panel.getByLabel(label, { exact: true })).toBeDisabled()
+    await expect(preview).toHaveAttribute('data-shape', 'hexagon')
+    if (process.env.ORBIT_TEST_SCREENSHOTS === '1') {
+      await panel.getByLabel('Accent color', { exact: true }).scrollIntoViewIfNeeded()
+      await diagnosticScreenshot(page, { path: `test-results/composer-empty-colors-${width}x1000.png` })
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
 }

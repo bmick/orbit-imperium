@@ -8332,6 +8332,8 @@ export interface components {
             foreground: string;
             background: string;
             layers?: components["schemas"]["InsigniaLayer"][];
+            /** @enum {string} */
+            shape?: "shield" | "circle" | "rounded_square" | "diamond" | "hexagon";
         };
         InsigniaDesign: {
             /** Format: uuid */

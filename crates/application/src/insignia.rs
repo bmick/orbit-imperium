@@ -29,6 +29,8 @@ pub enum CosmeticPolicy {
 #[serde(deny_unknown_fields)]
 pub struct InsigniaRecipe {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<InsigniaShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layers: Option<Vec<InsigniaLayer>>,
     pub version: u8,
     pub symbol: String,
@@ -38,6 +40,7 @@ pub struct InsigniaRecipe {
 impl Default for InsigniaRecipe {
     fn default() -> Self {
         Self {
+            shape: None,
             layers: None,
             version: 1,
             symbol: "compass".into(),
@@ -46,6 +49,17 @@ impl Default for InsigniaRecipe {
         }
     }
 }
+/// Basic backgrounds are free recipe choices, independent of catalog entitlements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InsigniaShape {
+    Shield,
+    Circle,
+    RoundedSquare,
+    Diamond,
+    Hexagon,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InsigniaLayer {
@@ -285,7 +299,7 @@ pub fn valid_insignia(recipe: &InsigniaRecipe) -> bool {
         && color(&recipe.foreground)
         && color(&recipe.background)
         && match (&recipe.layers, recipe.version) {
-            (None, 1) => true,
+            (None, 1) => recipe.shape.is_none(),
             (Some(layers), 2) => {
                 recipe.symbol == "compass"
                     && layers.len() <= 4
@@ -352,6 +366,22 @@ pub enum InsigniaAccess {
     Unavailable,
     NotInstalled,
 }
+pub fn composition_access(
+    policy: CosmeticPolicy,
+    evidence: SupporterEvidence,
+    now: i64,
+) -> InsigniaAccess {
+    if policy == CosmeticPolicy::Unrestricted {
+        InsigniaAccess::Available
+    } else if !evidence.known || evidence.expires_at <= now {
+        InsigniaAccess::Unavailable
+    } else if evidence.active {
+        InsigniaAccess::Available
+    } else {
+        InsigniaAccess::SupporterRequired
+    }
+}
+
 pub fn insignia_access(
     catalog: &InsigniaCatalog,
     symbol: &str,
@@ -424,13 +454,8 @@ pub fn recipe_access(
         }
     }
     let advanced = counts[1] > 0 || layers.iter().any(|l| l.color != recipe.foreground);
-    if advanced && policy != CosmeticPolicy::Unrestricted {
-        if !evidence.known || evidence.expires_at <= now {
-            return InsigniaAccess::Unavailable;
-        }
-        if !evidence.active {
-            return InsigniaAccess::SupporterRequired;
-        }
+    if advanced {
+        return composition_access(policy, evidence, now);
     }
     InsigniaAccess::Available
 }
@@ -739,6 +764,53 @@ mod tests {
         );
         assert_eq!(r.layers.unwrap()[0].symbol, "missing-center");
     }
+    #[test]
+    fn shapes_roundtrip_are_free_and_do_not_change_legacy_recipes() {
+        let base = InsigniaRecipe {
+            version: 2,
+            layers: Some(vec![]),
+            ..Default::default()
+        };
+        let old = serde_json::to_value(&base).unwrap();
+        assert!(old.get("shape").is_none());
+        assert_eq!(serde_json::from_value::<InsigniaRecipe>(old).unwrap(), base);
+        for shape in [
+            InsigniaShape::Shield,
+            InsigniaShape::Circle,
+            InsigniaShape::RoundedSquare,
+            InsigniaShape::Diamond,
+            InsigniaShape::Hexagon,
+        ] {
+            let r = InsigniaRecipe {
+                shape: Some(shape),
+                ..base.clone()
+            };
+            assert_eq!(
+                recipe_access(
+                    &InsigniaCatalog::default(),
+                    &r,
+                    CosmeticPolicy::Supporter,
+                    &[],
+                    SupporterEvidence::default(),
+                    100
+                ),
+                InsigniaAccess::Available
+            );
+            assert_eq!(
+                serde_json::from_value::<InsigniaRecipe>(serde_json::to_value(&r).unwrap())
+                    .unwrap(),
+                r
+            );
+            assert!(!valid_insignia(&InsigniaRecipe {
+                shape: Some(shape),
+                ..Default::default()
+            }));
+        }
+        let mut invalid = serde_json::to_value(base).unwrap();
+        invalid["shape"] = serde_json::json!("arbitrary-css");
+        assert!(serde_json::from_value::<InsigniaRecipe>(invalid).is_err());
+    }
+
     #[test]
     fn legacy_recipe_roundtrips_without_new_fields() {
         let value = serde_json::to_value(InsigniaRecipe::default()).unwrap();

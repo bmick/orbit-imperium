@@ -6,6 +6,18 @@ import type {
 import { symbolAccess } from './insignias'
 export type ElementGroup = 'center' | 'stripes' | 'accents'
 export const elementGroups: ElementGroup[] = ['center', 'stripes', 'accents']
+export const backgroundShapes = [
+  { id: 'shield', name: 'Shield' },
+  { id: 'circle', name: 'Circle' },
+  { id: 'rounded_square', name: 'Rounded square' },
+  { id: 'diamond', name: 'Diamond' },
+  { id: 'hexagon', name: 'Hexagon' },
+] as const
+export const groupColor = (
+  s: InsigniaState,
+  r: InsigniaRecipe,
+  group: ElementGroup,
+) => r.layers?.find((layer) => groupOf(s, layer.symbol) === group)?.color
 export const compositionAvailable = (s: InsigniaState, now: number) =>
   s.policy === 'unrestricted' ||
   (s.expires_at * 1000 > now && s.composition_access === 'available')

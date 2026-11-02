@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { InsigniaState } from '../adapters/insignias'
 import {
+  groupColor,
   compositionAppearance,
   freeRecipe,
   layeredRecipe,
@@ -111,4 +112,36 @@ describe('layered insignias', () => {
       expect(recipeAccess(free, r, 1)).toBe('available')
     }
   })
+})
+
+it('retains group colors on replacement and synchronizes both stripe slots', () => {
+  let r = layeredRecipe(defaultInsignia)
+  expect(groupColor(state, r, 'accents')).toBeUndefined()
+  r = selectElement(state, r, 'accent')
+  r = setElementColor(state, r, 'accents', '#22cc88')
+  expect(groupColor(state, r, 'accents')).toBe('#22cc88')
+  r = setElementColor(state, r, 'center', '#112233')
+  r = selectElement(state, r, 'circle')
+  expect(groupColor(state, r, 'center')).toBe('#112233')
+  r = selectElement(state, r, 'one')
+  r = setElementColor(state, r, 'stripes', '#abcdef')
+  for (const id of ['two', 'three']) r = selectElement(state, r, id)
+  expect(
+    r.layers
+      ?.filter((l) => ['two', 'three'].includes(l.symbol))
+      .map((l) => l.color),
+  ).toEqual(['#abcdef', '#abcdef'])
+  r = setElementColor(state, r, 'stripes', '#123456')
+  r = selectElement(state, r, 'two')
+  expect(groupColor(state, r, 'stripes')).toBe('#123456')
+  r = selectElement(state, r, 'three')
+  expect(groupColor(state, r, 'stripes')).toBeUndefined()
+  r = selectElement(state, r, 'one')
+  expect(groupColor(state, r, 'stripes')).toBe(r.foreground)
+})
+it('preserves background choices through free conversion, shuffle and previews', () => {
+  const r = { ...layeredRecipe(defaultInsignia), shape: 'diamond' as const }
+  expect(freeRecipe(state, r, 1).shape).toBe('diamond')
+  expect(shuffleRecipe(state, r, 1, () => 0).shape).toBe('diamond')
+  expect(compositionAppearance(state, r).recipe.shape).toBe('diamond')
 })

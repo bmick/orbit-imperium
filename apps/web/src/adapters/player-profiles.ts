@@ -21,7 +21,7 @@ export function playerProfilesApi(binding: Binding, csrf: string) {
         headers: {
           'content-type': 'application/json',
           'x-csrf-token': csrf,
-          'x-orbit-insignia': '3',
+          'x-orbit-insignia': '4',
         },
         body: JSON.stringify({ context: { binding, request_id }, source }),
       },

@@ -13,6 +13,7 @@ export function EmpireInsignia({
   return (
     <span
       className={`${styles.insignia} ${styles[size]}`}
+      data-shape={appearance.recipe.shape ?? 'shield'}
       role={label ? 'img' : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}

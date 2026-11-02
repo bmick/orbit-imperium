@@ -313,3 +313,54 @@
     position: static;
   }
 }
+
+/* All contexts render the same authored background; old recipes remain shields. */
+.insignia[data-shape='circle'],
+.insignia[data-shape='rounded_square'],
+.insignia[data-shape='diamond'],
+.insignia[data-shape='hexagon'] {
+  aspect-ratio: 1;
+  height: auto;
+}
+.insignia[data-shape='circle'] {
+  border-radius: 50%;
+}
+.insignia[data-shape='rounded_square'] {
+  border-radius: 15%;
+}
+.insignia[data-shape='diamond'] {
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.insignia[data-shape='hexagon'] {
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.insignia[data-shape='circle'] > .layer,
+.insignia[data-shape='hexagon'] > .layer {
+  inset: 10%;
+  width: 80%;
+  height: 80%;
+}
+.insignia[data-shape='diamond'] > .layer {
+  inset: 15%;
+  width: 70%;
+  height: 70%;
+}
+.shapeGrid button {
+  justify-content: center;
+}
+.colors input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.colors small {
+  color: var(--text-muted);
+}
+
+.elementGrid button:focus-visible {
+  outline: 2px solid #85d6ef;
+  outline-offset: 4px;
+}
