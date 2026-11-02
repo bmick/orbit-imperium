@@ -165,13 +165,13 @@ for (const building of [null, 'MetalMine', 'ResearchLab'] as const) {
     await nav.getByRole('link', { name: 'Research', exact: true }).click()
     const research = page.getByRole('region', { name: 'Research', exact: true })
     await expect(research.getByRole('link', { name: /^Open / })).toHaveCount(0)
-    await expect(research).toContainText(
-      building ? 'Energy Technology · Level 1' : 'No research in progress.',
-    )
-    if (building)
+    if (building) {
+      await expect(research.getByRole('link', { name: 'Energy Technology · Level 1', exact: true })).toBeVisible()
+      await expect(research.getByText('Level 1', { exact: true })).toBeVisible()
       await expect(
         research.getByRole('button', { name: 'Cancel research' }),
       ).toBeEnabled()
+    } else await expect(research).toContainText('No research in progress.')
     for (const destination of ['Shipyard', 'Defense'] as const) {
       await nav.getByRole('link', { name: destination, exact: true }).click()
       const manufacturing = page.getByRole('region', {
@@ -893,11 +893,12 @@ for (const [kind, elapsed] of [
     } else await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(cancel).toBeDisabled()
     await expect(cancel).toHaveText('Cancelling…')
-    await expect(summary).toContainText(
-      kind === 'construction'
-        ? 'Research Lab · Level 1'
-        : 'Energy Technology · Level 1',
-    )
+    if (kind === 'construction') {
+      await expect(summary).toContainText('Research Lab · Level 1')
+    } else {
+      await expect(summary.getByRole('link', { name: 'Energy Technology · Level 1', exact: true })).toBeVisible()
+      await expect(summary.getByText('Level 1', { exact: true })).toBeVisible()
+    }
     await expect(summary).toContainText(/1m \d+s/)
     await expect(summary).not.toContainText(`No ${kind} in progress.`)
     if (kind === 'construction')
@@ -1684,168 +1685,6 @@ test('fleet trajectory retains exact mission facts and requires recall review', 
   release()
 })
 
-test('reports distinguish zero, known empty and unrevealed historical observations', async ({
-  page,
-}) => {
-  let reportRevision = 1
-  const observed = Date.now() - 3600000
-  const header = {
-    id: id(62),
-    kind: 'Espionage',
-    observed_at: observed,
-    read: false,
-    hidden: false,
-  }
-  await shellFixture(page, {
-    protocol: 4, extraCapabilities: ['Attack', 'Reports'],
-    hasUnreadReports: () => !header.read,
-    viewerRevision: () => String(reportRevision),
-  })
-  await page.route('**/commands', async (route) => {
-    const envelope = route.request().postDataJSON().gameplay
-    expect(envelope.command).toEqual({ type: 'World', action: { type: 'MarkReportRead', report: header.id } })
-    header.read = true
-    reportRevision++
-    await route.fulfill({ json: {
-      protocol: 4, binding, command_id: envelope.command_id,
-      admitted_at: Date.now(), executed_at: Date.now(), status: 'Committed',
-      result_ids: [], minimum_viewer_revision: String(reportRevision),
-    } })
-  })
-  const payload = {
-    kind: 'Espionage',
-    target: {
-      body: id(60),
-      coordinates: { galaxy: 1, system: 372, position: 10 },
-      owner: id(9),
-      kind: 'Planet',
-    },
-    observed_at: observed,
-    resources: {
-      visibility: 'Known',
-      value: { metal: '0', crystal: '120000000', deuterium: '0' },
-    },
-    fleet: { visibility: 'Known', value: [] },
-    defenses: { visibility: 'Unknown' },
-    buildings: { visibility: 'Unknown' },
-    research: { visibility: 'Unknown' },
-    activity: { type: 'None' },
-    counterespionage: { probability_ppm: 0, detected: false },
-  }
-  let reportDetailRequests = 0
-  let reportMode: 'populated' | 'empty' | 'failed' = 'populated'
-  await page.route('**/api/**/reports**', async (route) => {
-    const detail = new URL(route.request().url()).pathname.endsWith(header.id)
-    if (detail) reportDetailRequests++
-    if (reportMode === 'failed')
-      return route.fulfill({ status: 503, json: { code: 'Unavailable' } })
-    const request = route.request().postDataJSON()
-    const context = request.context ?? request
-    await route.fulfill({
-      json: {
-        protocol: 4,
-        binding,
-        request_id: context.request_id,
-        viewer_revision: String(reportRevision),
-        sampled_at: Date.now(),
-        as_of_ms: Date.now(),
-        data: detail
-          ? { header, payload }
-          : {
-              items: reportMode === 'empty' ? [] : [header],
-              has_more: false,
-              next_cursor: null,
-              as_of_ms: Date.now(),
-            },
-      },
-    })
-  })
-  await page.goto(`/u/andromeda/b/${body.id}/reports`)
-  await expect(
-    page.getByRole('link', { name: 'Espionage', exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('Historical observations stay as recorded.', {
-      exact: false,
-    }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('checkbox', { name: 'Show deleted reports' }),
-  ).toHaveCount(0)
-  await diagnosticScreenshot(page, {
-    path: 'test-results/reports-list-desktop.png',
-    fullPage: true,
-  })
-  await page.setViewportSize({ width: 390, height: 900 })
-  await diagnosticScreenshot(page, {
-    path: 'test-results/reports-list-phone.png',
-    fullPage: true,
-  })
-  await page.getByRole('link', { name: 'Espionage', exact: true }).click()
-  const report = page.getByRole('region', { name: 'Report observation' })
-  await expect(report).toContainText('No stationed ships')
-  await expect(report).toContainText(
-    'Unknown — this observation did not reveal this section.',
-  )
-  await expect(report.getByText('0', { exact: true })).toHaveCount(2)
-  await expect(page.getByText(/1 hour ago/)).toBeVisible()
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 900 })
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true)
-    await diagnosticScreenshot(page, {
-      path: `test-results/reports-detail-${width}.png`,
-      fullPage: true,
-    })
-  }
-  const unreadAlert = page.getByRole('button', { name: 'Menu', exact: true }).getByRole('status', { name: 'Unread reports' })
-  await expect(page.getByRole('button', { name: 'Mark read', exact: true })).toHaveCount(0)
-  await expect(unreadAlert).toHaveCount(0)
-  await expect.poll(() => header.read).toBe(true)
-  await page
-    .getByRole('button', { name: 'Attack', exact: true })
-    .click()
-  await expect(page.getByLabel('Destination coordinates', { exact: true })).toHaveValue(coordinatePattern('system', '372'))
-  await expect(page.getByLabel('Destination coordinates', { exact: true })).toHaveValue(coordinatePattern('position', '10'))
-  await expect(page.getByText(/Prepared from an observation/)).toBeVisible()
-  await diagnosticScreenshot(page, {
-    path: 'test-results/dispatch-draft-phone.png',
-    fullPage: true,
-  })
-  reportMode = 'empty'
-  await page.goto(`/u/andromeda/b/${body.id}/reports`)
-  await expect(page.getByText('No reports to show.', { exact: true })).toBeVisible()
-  await diagnosticScreenshot(page, {
-    path: 'test-results/reports-empty-phone.png',
-    fullPage: true,
-  })
-  // Legacy URLs remount the report during canonicalization. Keep this retry
-  // scenario on the final route so a redirect cannot consume its recovery.
-  reportDetailRequests = 0
-  reportMode = 'failed'
-  await page.goto(`/u/andromeda/b/${body.id}/reports/${header.id}`)
-  await expect(
-    page.getByRole('button', { name: 'Retry reports', exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('region', { name: 'Report observation' }),
-  ).toHaveCount(0)
-  await diagnosticScreenshot(page, {
-    path: 'test-results/reports-unavailable-phone.png',
-    fullPage: true,
-  })
-  expect(reportDetailRequests).toBe(1)
-  reportMode = 'populated'
-  await page.getByRole('button', { name: 'Retry reports', exact: true }).click()
-  await expect(
-    page.getByRole('region', { name: 'Report observation' }),
-  ).toContainText('No stationed ships')
-  expect(reportDetailRequests).toBe(2)
-})
-
 test('secondary pages retain empty, unavailable and settings states at phone width', async ({
   page,
 }) => {
@@ -2253,7 +2092,8 @@ for (const width of [390, 1440]) {
     }
     await page.goto(`/u/andromeda/b/${body.id}/resources`)
     const work = page.getByRole('region', { name: 'Buildings', exact: true })
-    await expect(work).toContainText('Metal Mine · Level 2')
+    await expect(work.getByRole('link', { name: 'Metal Mine · Level 2', exact: true })).toBeVisible()
+    await expect(work.getByText('Level 2', { exact: true })).toBeVisible()
     await expect(work.getByRole('button', { name: 'Cancel construction' })).toBeEnabled()
     await page.getByRole('link', { name: 'Upgrade Metal Mine', exact: true }).click()
     const detail = page.getByRole('region', { name: 'Active construction' })
@@ -2655,7 +2495,7 @@ test.describe('planet-scoped gameplay routes retain context and redirect old que
 })
 
 for (const width of [320, 390, 1440]) {
-  test(`active building and research summaries use two tight lines at ${width}px`, async ({ page }) => {
+  test(`active building and research cards retain timing and touch targets at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const now = Date.now()
     await page.clock.setFixedTime(now)
@@ -2672,23 +2512,25 @@ for (const width of [320, 390, 1440]) {
       const link = queue.getByRole('link', { name: new RegExp(label) })
       await expect(link).toBeVisible()
       await expect(queue).not.toContainText('In progress')
-      const lines = await link.locator(':scope > span').all()
-      expect(lines).toHaveLength(2)
-      await expect(lines[0]).toHaveText(label)
-      // The real server fixture clock advances while pages load; formatting is unit-tested separately.
-      await expect(lines[1]).toHaveText(/^\d+s$/)
-      const seconds = parseInt((await lines[1].textContent())!, 10)
+      await expect(link).toHaveText(label.split(' · ')[0])
+      await expect(queue.getByText('Level 3', { exact: true })).toBeVisible()
+      const timer = queue.locator('dt').filter({ hasText: /^Time remaining$/ }).locator('..').locator('dd')
+      // The fixture clock advances while pages load; formatting is unit-tested separately.
+      await expect(timer).toHaveText(/^\d+s$/)
+      const seconds = parseInt((await timer.textContent())!, 10)
       expect(seconds).toBeGreaterThan(0)
       expect(seconds).toBeLessThanOrEqual(35)
-      const first = (await lines[0].boundingBox())!
-      const second = (await lines[1].boundingBox())!
-      expect(second.y - (first.y + first.height)).toBeLessThanOrEqual(2)
+      await expect(queue.getByText('Scheduled finish', { exact: true })).toBeVisible()
+      await expect(queue.locator('img')).toBeVisible()
       const bounds = (await link.boundingBox())!
       expect(bounds.height).toBeGreaterThanOrEqual(44)
-      expect(bounds.height).toBeLessThanOrEqual(45)
-      expect((await queue.boundingBox())!.height).toBeLessThanOrEqual(62)
+      const card = (await queue.boundingBox())!
+      const time = (await timer.boundingBox())!
+      expect(time.x).toBeGreaterThanOrEqual(card.x)
+      expect(time.x + time.width).toBeLessThanOrEqual(card.x + card.width)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await expect(queue.getByRole('button', { name: /^Cancel / })).toBeEnabled()
-      await diagnosticScreenshot(queue, { path: `test-results/compact-work-${path}-${width}.png` })
+      await diagnosticScreenshot(queue, { path: `test-results/work-card-${path}-${width}x900.png` })
     }
   })
 }

@@ -6,6 +6,7 @@ import { test, expect } from './fixtures/test'
 import type { components } from '../src/contracts'
 import {
   shellFixture,
+  installGameFixture,
   playerProfilesFixture,
   binding,
   body,
@@ -303,6 +304,58 @@ test('espionage and combat observations use current public identities without ch
   await inspectIdentity(page, 'combat', 'Observer')
 })
 
+for (const width of [1440, 390]) {
+  test(`bot profile labels follow authoritative refresh at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await installGameFixture(page, {
+      protocol: 4,
+      missions: { fleets: [], incoming: [], fleet_slots: '1', score_value_micro: '0' },
+    })
+    let kind: 'bot' | 'human' = 'bot'
+    await playerProfilesFixture(page, () => [
+      { player: id(31), username: 'Harvester', kind },
+      { player: binding.player, username: 'Commander', kind: 'human' },
+    ])
+    await page.route('**/rankings', route => route.fulfill({ json: {
+      binding, request_id: route.request().postDataJSON().request_id,
+      sampled_at: Date.now(), processing_pending: false,
+      players: [{ player: id(31), username: 'Harvester', points: '12500', rank: 1 }],
+    } }))
+    // Wait for this screen's identity data, not HTML load or unrelated HUD profiles.
+    const withProfiles = async (action: () => Promise<unknown>) => {
+      const [response] = await Promise.all([
+        page.waitForResponse(response => {
+          if (!response.url().endsWith('/player-profiles')) return false
+          const source = response.request().postDataJSON()?.source
+          return source?.type === 'Rankings' && source.players.includes(id(31))
+        }),
+        action(),
+      ])
+      expect(response.ok()).toBe(true)
+      expect(await response.finished()).toBeNull()
+    }
+    await withProfiles(() => page.goto('/u/andromeda/high-scores'))
+    const trigger = page.getByRole('button', { name: 'Harvester profile details' })
+    const profile = page.getByRole('dialog', { name: 'Harvester profile' })
+    await expect(trigger.getByLabel('Bot', { exact: true })).toBeVisible()
+    await trigger.click()
+    await expect(profile).toBeVisible()
+    await expect(profile).toContainText('Automated player')
+    await page.keyboard.press('Escape')
+    await expect(profile).toHaveCount(0)
+
+    kind = 'human'
+    await withProfiles(() => page.evaluate(() => window.dispatchEvent(new Event('pageshow'))))
+    await expect(trigger.getByLabel('Bot', { exact: true })).toHaveCount(0)
+    await expect(trigger).toContainText('Harvester')
+    await trigger.click()
+    await expect(profile).toBeVisible()
+    await expect(profile).toContainText('Commander')
+    await expect(profile).not.toContainText(/automated|\bBot\b/i)
+    await page.keyboard.press('Escape')
+    await expect(profile).toHaveCount(0)
+  })
+}
 
 test('player attachments align together and long identities stay within narrow rows', async ({ page }) => {
   await shellFixture(page, { protocol: 4, missions: { fleets: [], incoming: [], fleet_slots: '1', score_value_micro: '0' } })

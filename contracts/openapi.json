@@ -12581,6 +12581,30 @@
               "type"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "EnterVacation"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "ExitVacation"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -12731,7 +12755,9 @@
           "AttackGroupTooLate",
           "AllianceLeader",
           "DeletionDue",
-          "ReauthenticationRequired"
+          "ReauthenticationRequired",
+          "VacationBlocked",
+          "VacationMinimum"
         ]
       },
       "BoundReceipt4": {
@@ -13502,6 +13528,9 @@
           },
           "leads_alliance": {
             "type": "boolean"
+          },
+          "vacation": {
+            "$ref": "#/components/schemas/VacationView4"
           }
         },
         "required": [
@@ -18769,7 +18798,8 @@
         "enum": [
           "human",
           "bot"
-        ]
+        ],
+        "description": "Public presentation classification. Bots in universes with hidden bot display are presented as human; this value does not control machine participation."
       },
       "BotPolicy": {
         "type": "object",
@@ -18799,6 +18829,15 @@
             ],
             "minimum": 1,
             "maximum": 4294967295
+          },
+          "display": {
+            "type": "string",
+            "enum": [
+              "visible",
+              "hidden"
+            ],
+            "default": "visible",
+            "description": "Public bot indicators. Hidden suppresses bot labels without changing machine participation. Omission preserves the visible default for older policy documents."
           }
         }
       },
@@ -21165,6 +21204,67 @@
           "color",
           "asset_url"
         ]
+      },
+      "VacationView4": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "entered_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "earliest_exit_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "Fleet",
+                    "Missile",
+                    "Construction",
+                    "Research",
+                    "Manufacturing",
+                    "HostedFleet"
+                  ]
+                },
+                "body": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "kind",
+                "body"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "active",
+          "entered_at",
+          "earliest_exit_at",
+          "blockers"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

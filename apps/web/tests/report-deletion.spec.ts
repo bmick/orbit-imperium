@@ -19,8 +19,8 @@ async function filterStatus(page: Page, status: string) {
 }
 async function ageCleanup(page: Page) {
   await page.getByRole('button', {name: 'More report actions'}).click()
-  await page.getByRole('menuitem', {name: /^Archive( older reports)?…$/}).click()
-  await expect(page.getByRole('dialog', {name: /^Archive( older)? reports$/})).toBeVisible()
+  await page.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
+  await expect(page.getByRole('dialog', {name: 'Archive reports', exact: true})).toBeVisible()
 }
 
 async function reportsFixture(page: Page, quiet = false, count = 2) {
@@ -182,6 +182,59 @@ async function reportsFixture(page: Page, quiet = false, count = 2) {
     },
     submitted: () => submitted,
   }
+}
+
+for (const width of [320, 390, 800, 1440]) {
+  test.describe(`archive target at ${width}px`, () => {
+    test.use({ hasTouch: width < 1440 })
+
+    test('archive and restore respond at the target edge without opening the row', async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      const fixture = await reportsFixture(page, true)
+      const rows = page.locator('main article')
+      const inboxUrl = page.url()
+      const targetSize = width < 1440 ? 44 : 24
+      const activateEdge = async (name: string) => {
+        const button = page.getByRole('button', { name, exact: true }).last()
+        const box = (await button.boundingBox())!
+        expect(box.width).toBe(targetSize)
+        expect(box.height).toBe(targetSize)
+        expect(box.x + box.width).toBeLessThanOrEqual(width)
+        expect((await button.locator('svg').boundingBox())!.width).toBe(16)
+        // This point is outside the old 24px target on touch devices.
+        const x = box.x + 2
+        const y = box.y + box.height / 2
+        if (width < 1440) await page.touchscreen.tap(x, y)
+        else await page.mouse.click(x, y)
+      }
+      await diagnosticScreenshot(page, { path: `test-results/archive-target-list-${width}x900.png` })
+      await activateEdge('Archive report')
+      await expect.poll(() => fixture.headers[1].hidden).toBe(true)
+      await expect(rows).toHaveCount(1)
+      await expect(page).toHaveURL(inboxUrl)
+      await page.getByRole('button', { name: 'Archived', exact: true }).click()
+      await expect(rows).toHaveCount(1)
+      await activateEdge('Move to inbox')
+      await expect.poll(() => fixture.headers[1].hidden).toBe(false)
+      await expect(rows).toHaveCount(0)
+      await page.getByRole('button', { name: 'Inbox', exact: true }).click()
+      await rows.first().getByRole('link', { name: 'Espionage', exact: true }).click()
+      await expect(page.getByRole('region', { name: 'Report observation' })).toBeVisible()
+      const archive = page.getByRole('button', { name: 'Archive report', exact: true })
+      const share = page.getByRole('button', { name: 'Share report', exact: true })
+      const shareBox = (await share.boundingBox())!
+      const archiveBox = (await archive.boundingBox())!
+      expect(archiveBox.x).toBeGreaterThanOrEqual(shareBox.x + shareBox.width)
+      expect(archiveBox.x + archiveBox.width).toBeLessThanOrEqual(width)
+      await archive.focus()
+      await diagnosticScreenshot(page, { path: `test-results/archive-target-detail-${width}x900.png` })
+      await activateEdge('Archive report')
+      await expect(page).toHaveURL(inboxUrl)
+      await expect(rows).toHaveCount(1)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    })
+  })
 }
 
 for (const width of [1440, 390]) {
@@ -511,7 +564,7 @@ for (const width of [1280, 390]) {
     await diagnosticScreenshot(page, { path: `test-results/report-triage-${width}.png` })
     await ageCleanup(page)
     await page.getByRole('button', {name: 'Archive 1 report', exact: true}).click()
-    await page.getByRole('dialog', {name: /^Archive( older)? reports$/}).getByRole('button', {name: /Dismiss (sheet|popover)/}).click()
+    await page.getByRole('dialog', {name: 'Archive reports', exact: true}).getByRole('button', {name: /Dismiss (sheet|popover)/}).click()
     await expect(rows).toHaveCount(1)
     await expect(rows.first().getByRole('button', { name: 'Archive report', exact: true })).toBeDisabled()
     expect(fixture.headers[0].hidden).toBe(true)
@@ -665,13 +718,13 @@ test.describe('report touch actions', () => {
       await expect(row.getByRole('button', { name: /^(Unstar|Star) report$/ })).toHaveCount(0)
       await expect(remove).toBeEnabled()
       const box = (await remove.boundingBox())!
-      expect(box.width).toBe(24)
-      expect(box.height).toBe(24)
+      expect(box.width).toBe(44)
+      expect(box.height).toBe(44)
       expect((await remove.locator('svg').boundingBox())!.width).toBe(16)
 
-      // Tap the compact button corners, outside the glyph.
+      // Tap the expanded button corners, outside the glyph.
       fixture.setMode('rejected')
-      for (const [x, y] of [[2, 2], [22, 2], [2, 22], [22, 22]]) {
+      for (const [x, y] of [[2, 2], [42, 2], [2, 42], [42, 42]]) {
         const submitted = fixture.submitted()
         await remove.tap({ position: { x, y } })
         await expect.poll(fixture.submitted).toBe(submitted + 1)
@@ -693,7 +746,7 @@ test.describe('report touch actions', () => {
       await expect(remove).toBeDisabled()
       await remove.scrollIntoViewIfNeeded()
       const disabledBox = (await remove.boundingBox())!
-      for (const [x, y] of [[2, 2], [22, 2], [2, 22], [22, 22]]) {
+      for (const [x, y] of [[2, 2], [42, 2], [2, 42], [42, 42]]) {
         await page.touchscreen.tap(disabledBox.x + x, disabledBox.y + y)
         await expect(page).toHaveURL(inbox)
         expect(fixture.submitted()).toBe(4)
@@ -717,7 +770,7 @@ test.describe('report touch actions', () => {
       await expect(remove).toBeEnabled()
       fixture.setMode('success')
       // Recheck target size after detail navigation before tapping its padding.
-      expect((await remove.boundingBox())!.height).toBe(24)
+      expect((await remove.boundingBox())!.height).toBe(44)
       await remove.tap({ position: { x: 2, y: 22 } })
       await expect.poll(() => fixture.headers[0].hidden).toBe(true)
       await expect(page).toHaveURL(inbox)
@@ -1083,94 +1136,89 @@ for (const width of [1280, 390]) {
   })
 }
 
-test('desktop Archive all reviews the entire Inbox and protects starred reports across filters', async ({page}) => {
-  await page.setViewportSize({width: 1280, height: 900})
-  await page.emulateMedia({reducedMotion: 'reduce'})
-  const fixture = await reportsFixture(page, true)
-  fixture.headers[1].starred = true
-  fixture.headers[0].observed_at = Date.now() - 60_000
-  await page.reload()
-  await filterStatus(page, 'unread')
-  await expect(page.getByRole('article')).toHaveCount(1)
-  const trigger = page.getByRole('button', {name: 'More report actions'})
-  await trigger.click()
-  const menu = page.getByRole('menu', {name: 'Report actions'})
-  await expect(menu.getByRole('menuitem', {name: 'Archive…', exact: true})).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveCount(1)
-  await diagnosticScreenshot(page, {path: 'test-results/reports-archive-all-menu-1280x900.png', clip: {x: 240, y: 80, width: 1040, height: 470}})
-  await menu.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
-  const dialog = page.getByRole('dialog', {name: 'Archive reports', exact: true})
-  await expect(dialog).toContainText('Entire Inbox · Starred reports stay.')
-  await expect(menu.getByRole('menuitem')).toHaveCount(0)
-  await expect(dialog.getByRole('button', {name: 'Archive all (1)', exact: true})).toBeEnabled()
-  await diagnosticScreenshot(page, {path: 'test-results/reports-archive-all-review-1280x900.png', clip: {x: 240, y: 80, width: 1040, height: 470}})
-  await dialog.getByRole('combobox', {name: 'Older than'}).selectOption('custom')
-  await dialog.getByRole('spinbutton', {name: 'Hours', exact: true}).fill('-1')
-  await expect(dialog.getByRole('button', {name: 'Archive 0 reports', exact: true})).toBeDisabled()
-  await expect(dialog.getByRole('button', {name: 'Archive all (1)', exact: true})).toBeEnabled()
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeHidden()
-  await expect(trigger).toBeFocused()
-  expect(fixture.submitted()).toBe(0)
-  await trigger.click()
-  await menu.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
-  await dialog.getByRole('button', {name: 'Archive all (1)', exact: true}).click()
-  await expect.poll(() => fixture.headers.map(r => r.hidden)).toEqual([true, false])
-  await expect(page.getByRole('article')).toHaveCount(1)
-  await expect(dialog.getByRole('button', {name: 'Archive all (0)', exact: true})).toBeDisabled()
-  await expect(dialog.getByRole('button', {name: 'Archive all (0)', exact: true})).toBeDisabled()
-  expect(fixture.submitted()).toBe(1)
-  await diagnosticScreenshot(page, {path: 'test-results/reports-archive-all-complete-1280x900.png', clip: {x: 240, y: 80, width: 1040, height: 470}})
-  await dialog.getByRole('button', {name: 'Dismiss popover'}).click()
-  await page.getByRole('button', {name: 'Remove unread filter', exact: true}).click()
-  await page.getByRole('button', {name: 'Archived', exact: true}).click()
-  await expect(page.getByRole('article')).toHaveCount(1)
-  await page.getByRole('button', {name: 'Move to inbox', exact: true}).click()
-  await expect.poll(() => fixture.headers.map(r => r.hidden)).toEqual([false, false])
-})
-
-test('desktop Archive all waits for complete history and preserves retry after rejection', async ({page}) => {
-  await page.setViewportSize({width: 1280, height: 900})
-  await page.emulateMedia({reducedMotion: 'reduce'})
-  const fixture = await reportsFixture(page, true)
-  let release!: () => void
-  fixture.holdMore(new Promise<void>(resolve => {release = resolve}))
-  await page.reload()
-  const dialog = page.getByRole('dialog', {name: 'Archive reports', exact: true})
-  try {
-    await page.getByRole('button', {name: 'More report actions'}).click()
-    await page.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
-    await expect(dialog.getByRole('button', {name: 'Loading reports…', exact: true})).toBeDisabled()
+for (const width of [1280, 390]) {
+  test(`Archive all reviews the entire Inbox and protects starred reports across filters at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width, height: 900})
+    await page.emulateMedia({reducedMotion: 'reduce'})
+    const fixture = await reportsFixture(page, true)
+    fixture.headers[1].starred = true
+    fixture.headers[0].observed_at = Date.now() - 60_000
+    await page.reload()
+    await filterStatus(page, 'unread')
+    await expect(page.getByRole('article')).toHaveCount(1)
+    const trigger = page.getByRole('button', {name: 'More report actions'})
+    await trigger.click()
+    const menu = page.getByRole('menu', {name: 'Report actions'})
+    await expect(menu.getByRole('menuitem', {name: 'Archive…', exact: true})).toBeVisible()
+    await expect(menu.getByRole('menuitem')).toHaveCount(width < 768 ? 2 : 1)
+    if (width < 768)
+      await expect(menu.getByRole('menuitem', {name: 'Select reports', exact: true})).toBeVisible()
+    await diagnosticScreenshot(page, {path: `test-results/reports-archive-all-menu-${width}x900.png`})
+    await menu.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
+    const dialog = page.getByRole('dialog', {name: 'Archive reports', exact: true})
+    await expect(dialog).toContainText('Entire Inbox · Starred reports stay.')
+    await expect(menu.getByRole('menuitem')).toHaveCount(0)
+    await expect(dialog.getByRole('button', {name: 'Archive all (1)', exact: true})).toBeEnabled()
+    await diagnosticScreenshot(page, {path: `test-results/reports-archive-all-review-${width}x900.png`})
+    await dialog.getByRole('combobox', {name: 'Older than'}).selectOption('custom')
+    await dialog.getByRole('spinbutton', {name: 'Hours', exact: true}).fill('-1')
+    await expect(dialog.getByRole('button', {name: 'Archive 0 reports', exact: true})).toBeDisabled()
+    await expect(dialog.getByRole('button', {name: 'Archive all (1)', exact: true})).toBeEnabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
     expect(fixture.submitted()).toBe(0)
-  } finally {
-    release()
-  }
-  const confirm = dialog.getByRole('button', {name: 'Archive all (2)', exact: true})
-  await expect(confirm).toBeEnabled()
-  fixture.setMode('rejected')
-  await confirm.click()
-  await expect(dialog.getByRole('alert')).toContainText('Cleanup stopped.')
-  await expect(page.getByRole('article')).toHaveCount(2)
-  await expect(confirm).toBeEnabled()
-  expect(fixture.headers.map(r => r.hidden)).toEqual([false, false])
-  fixture.setMode('success')
-  await confirm.click()
-  await expect(page.getByRole('article')).toHaveCount(0)
-  await expect(dialog.getByRole('button', {name: 'Archive all (0)', exact: true})).toBeDisabled()
-  expect(fixture.submitted()).toBe(2)
-})
+    await trigger.click()
+    await menu.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
+    await dialog.getByRole('button', {name: 'Archive all (1)', exact: true}).click()
+    await expect.poll(() => fixture.headers.map(r => r.hidden)).toEqual([true, false])
+    await expect(page.getByRole('article')).toHaveCount(1)
+    await expect(dialog.getByRole('button', {name: 'Archive all (0)', exact: true})).toBeDisabled()
+    expect(fixture.submitted()).toBe(1)
+    await diagnosticScreenshot(page, {path: `test-results/reports-archive-all-complete-${width}x900.png`})
+    await dialog.getByRole('button', {name: /Dismiss (sheet|popover)/}).click()
+    await page.getByRole('button', {name: 'Remove unread filter', exact: true}).click()
+    await page.getByRole('button', {name: 'Archived', exact: true}).click()
+    await expect(page.getByRole('article')).toHaveCount(1)
+    if (width < 768) {
+      await selectReports(page)
+      await page.getByRole('article').getByRole('checkbox').check()
+    }
+    await page.getByRole('button', {name: 'Move to inbox', exact: true}).click()
+    await expect.poll(() => fixture.headers.map(r => r.hidden)).toEqual([false, false])
+  })
 
-test('mobile report dropdown keeps its existing actions', async ({page}) => {
-  await page.setViewportSize({width: 390, height: 900})
-  await page.emulateMedia({reducedMotion: 'reduce'})
-  await reportsFixture(page, true)
-  await page.getByRole('button', {name: 'More report actions'}).click()
-  const menu = page.getByRole('menu', {name: 'Report actions'})
-  await expect(menu.getByRole('menuitem', {name: 'Select reports', exact: true})).toBeVisible()
-  await expect(menu.getByRole('menuitem', {name: 'Archive older reports…', exact: true})).toBeVisible()
-  await expect(menu.getByRole('menuitem', {name: 'Archive all…', exact: true})).toHaveCount(0)
-  await diagnosticScreenshot(page, {path: 'test-results/reports-archive-all-mobile-390x900.png'})
-})
+  test(`Archive all waits for complete history and preserves retry after rejection at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width, height: 900})
+    await page.emulateMedia({reducedMotion: 'reduce'})
+    const fixture = await reportsFixture(page, true)
+    let release!: () => void
+    fixture.holdMore(new Promise<void>(resolve => {release = resolve}))
+    await page.reload()
+    const dialog = page.getByRole('dialog', {name: 'Archive reports', exact: true})
+    try {
+      await page.getByRole('button', {name: 'More report actions'}).click()
+      await page.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
+      await expect(dialog.getByRole('button', {name: 'Loading reports…', exact: true})).toBeDisabled()
+      expect(fixture.submitted()).toBe(0)
+    } finally {
+      release()
+    }
+    const confirm = dialog.getByRole('button', {name: 'Archive all (2)', exact: true})
+    await expect(confirm).toBeEnabled()
+    fixture.setMode('rejected')
+    await confirm.click()
+    await expect(dialog.getByRole('alert')).toContainText('Cleanup stopped.')
+    await expect(page.getByRole('article')).toHaveCount(2)
+    await expect(confirm).toBeEnabled()
+    expect(fixture.headers.map(r => r.hidden)).toEqual([false, false])
+    fixture.setMode('success')
+    await confirm.click()
+    await expect(page.getByRole('article')).toHaveCount(0)
+    await expect(dialog.getByRole('button', {name: 'Archive all (0)', exact: true})).toBeDisabled()
+    expect(fixture.submitted()).toBe(2)
+  })
+}
 
 test('desktop selection and row archiving stay available during cached refresh', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900})
@@ -1277,9 +1325,9 @@ for (const width of [1440, 390]) {
     await page.locator('main article').last().getByRole('checkbox').check()
     await page.getByRole('button', {name: 'More report actions'}).click()
     await page.clock.runFor(1000)
-    await page.getByRole('menuitem', {name: /^Archive( older reports)?…$/}).click()
+    await page.getByRole('menuitem', {name: 'Archive…', exact: true}).click()
     await page.clock.runFor(1000)
-    const dialog = page.getByRole('dialog', {name: /^Archive( older)? reports$/})
+    const dialog = page.getByRole('dialog', {name: 'Archive reports', exact: true})
     await dialog.getByRole('combobox', {name: 'Older than'}).selectOption('custom')
     const hours = dialog.getByRole('spinbutton', {name: 'Hours', exact: true})
     await hours.fill('12')
@@ -1294,8 +1342,7 @@ for (const width of [1440, 390]) {
       await expect(hours).toHaveValue('12')
       await hours.fill('6')
       await expect(dialog.getByRole('button', {name: 'Archive 2 reports', exact: true})).toBeEnabled()
-      if (width >= 768)
-        await expect(dialog.getByRole('button', {name: 'Archive all (2)', exact: true})).toBeEnabled()
+      await expect(dialog.getByRole('button', {name: 'Archive all (2)', exact: true})).toBeEnabled()
       await diagnosticScreenshot(page, {path: `test-results/reports-background-cleanup-${width}x900.png`})
     } finally { release() }
     await expect(page.getByRole('button', {name: 'Retry reports', exact: true})).toBeVisible()

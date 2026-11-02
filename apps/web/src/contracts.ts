@@ -6509,6 +6509,12 @@ export interface components {
         } | {
             /** @constant */
             type: "CancelEmpireDeletion";
+        } | {
+            /** @constant */
+            type: "EnterVacation";
+        } | {
+            /** @constant */
+            type: "ExitVacation";
         };
         Command4: components["schemas"]["Command3"] | {
             /** @constant */
@@ -6537,7 +6543,7 @@ export interface components {
             gameplay: components["schemas"]["CommandEnvelopeV4"];
         };
         /** @enum {unknown} */
-        GameError4: "NumericRange" | "UnavailableContent" | "NotOwned" | "NotFound" | "InsufficientResources" | "ActiveConstruction" | "NoFreeField" | "QuoteChanged" | "OperationNotActive" | "InvalidInput" | "InsufficientShips" | "NoFleetSlot" | "CargoCapacity" | "NotOutbound" | "SettingsChanged" | "PrerequisiteMissing" | "ResearchActive" | "LabLocked" | "YardLocked" | "CapacityReserved" | "QueueCapacity" | "EnergyRequired" | "BodyKindNotAllowed" | "NotDemolishable" | "ModeRestricted" | "NoHarvestTarget" | "PolicyUnavailable" | "ActorVacation" | "ActorDraining" | "TargetVacation" | "BeginnerProtected" | "PresenceUnavailable" | "PositionOccupied" | "InsufficientMissiles" | "OutOfRange" | "SiloBusy" | "AbandonmentBlocked" | "HoldingUnavailable" | "DepotBudgetExceeded" | "ExtensionTooSmall" | "AttackGroupClosed" | "AttackGroupFull" | "AttackGroupTooLate" | "AllianceLeader" | "DeletionDue" | "ReauthenticationRequired";
+        GameError4: "NumericRange" | "UnavailableContent" | "NotOwned" | "NotFound" | "InsufficientResources" | "ActiveConstruction" | "NoFreeField" | "QuoteChanged" | "OperationNotActive" | "InvalidInput" | "InsufficientShips" | "NoFleetSlot" | "CargoCapacity" | "NotOutbound" | "SettingsChanged" | "PrerequisiteMissing" | "ResearchActive" | "LabLocked" | "YardLocked" | "CapacityReserved" | "QueueCapacity" | "EnergyRequired" | "BodyKindNotAllowed" | "NotDemolishable" | "ModeRestricted" | "NoHarvestTarget" | "PolicyUnavailable" | "ActorVacation" | "ActorDraining" | "TargetVacation" | "BeginnerProtected" | "PresenceUnavailable" | "PositionOccupied" | "InsufficientMissiles" | "OutOfRange" | "SiloBusy" | "AbandonmentBlocked" | "HoldingUnavailable" | "DepotBudgetExceeded" | "ExtensionTooSmall" | "AttackGroupClosed" | "AttackGroupFull" | "AttackGroupTooLate" | "AllianceLeader" | "DeletionDue" | "ReauthenticationRequired" | "VacationBlocked" | "VacationMinimum";
         BoundReceipt4: {
             /** Format: uuid */
             command_id: string;
@@ -6732,6 +6738,7 @@ export interface components {
             attack_groups?: components["schemas"]["AttackGroup4"][];
             empire_deletion?: components["schemas"]["EmpireDeletionStatus4"];
             leads_alliance?: boolean;
+            vacation?: components["schemas"]["VacationView4"];
         };
         CapabilityState4: {
             /** @enum {unknown} */
@@ -7954,7 +7961,10 @@ export interface components {
             rank: number;
             previous_rank: number | null;
         };
-        /** @enum {string} */
+        /**
+         * @description Public presentation classification. Bots in universes with hidden bot display are presented as human; this value does not control machine participation.
+         * @enum {string}
+         */
         PlayerKind: "human" | "bot";
         BotPolicy: {
             /** @constant */
@@ -7962,6 +7972,12 @@ export interface components {
             enabled: boolean;
             max_active: number;
             action_units_per_24h: number | null;
+            /**
+             * @description Public bot indicators. Hidden suppresses bot labels without changing machine participation. Omission preserves the visible default for older policy documents.
+             * @default visible
+             * @enum {string}
+             */
+            display: "visible" | "hidden";
         };
         BotStatus: {
             binding: components["schemas"]["Binding"];
@@ -8522,6 +8538,17 @@ export interface components {
             symbol: string;
             color: string;
             asset_url: string;
+        };
+        VacationView4: {
+            active: boolean;
+            entered_at: number | null;
+            earliest_exit_at: number | null;
+            blockers: {
+                /** @enum {unknown} */
+                kind: "Fleet" | "Missile" | "Construction" | "Research" | "Manufacturing" | "HostedFleet";
+                /** Format: uuid */
+                body: string | null;
+            }[];
         };
     };
     responses: never;
